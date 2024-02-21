@@ -12,6 +12,9 @@ Base.length(::BenchmarkInfo) = 1
 Base.iterate(m::BenchmarkInfo) = (m, nothing)
 Base.iterate(::BenchmarkInfo, ::Nothing) = nothing
 
+each_benchmark(bi::BenchmarkInfo) =
+    ((f, getfield(bi, f)) for f in fieldnames(BenchmarkInfo))
+
 function join_benchmark_info(b1::BenchmarkInfo, b2::BenchmarkInfo)
     BenchmarkInfo(
         vcat(b1.clvleaf, b2.clvleaf),
@@ -20,7 +23,7 @@ function join_benchmark_info(b1::BenchmarkInfo, b2::BenchmarkInfo)
         vcat(b1.pot3d, b2.pot3d),
         vcat(b1.soma, b2.soma),
         vcat(b1.tealeaf, b2.tealeaf),
-        vcat(b1.weather, b2.weather)
+        vcat(b1.weather, b2.weather),
     )
 end
 
@@ -43,15 +46,7 @@ function parse_data_json(data)
     tealeaf_t = filter(i -> is_benchmark(i, "tealeaf_t"), infos)
     weather_t = filter(i -> is_benchmark(i, "weather_t"), infos)
 
-    BenchmarkInfo(
-        clvleaf_t,
-        hpgmgfv_t,
-        lbm_t,
-        pot3d_t,
-        soma_t,
-        tealeaf_t,
-        weather_t
-    )
+    BenchmarkInfo(clvleaf_t, hpgmgfv_t, lbm_t, pot3d_t, soma_t, tealeaf_t, weather_t)
 end
 
 

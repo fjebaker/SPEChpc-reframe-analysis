@@ -5,15 +5,17 @@ struct Power{F} <: AbstractMetric
     unit::String
     reduction::F
 end
-Power(;reduction = maximum) = Power(1e3, "kW", reduction)
-format_label(m::Power) = "$(Base.typename(typeof(m.reduction)).name) $(Base.typename(typeof(m)).name) ($(m.unit))"
+Power(; reduction = maximum) = Power(1e3, "kW", reduction)
+format_label(m::Power) =
+    "$(Base.typename(typeof(m.reduction)).name) $(Base.typename(typeof(m)).name) ($(m.unit))"
 struct PowerSaving{F} <: AbstractMetric
     scale::Float64
     unit::String
     reduction::F
 end
-PowerSaving(;reduction = maximum) = PowerSaving(1e3, "rel.", reduction)
-format_label(m::PowerSaving) = "$(Base.typename(typeof(m.reduction)).name) $(Base.typename(typeof(m)).name) ($(m.unit))"
+PowerSaving(; reduction = maximum) = PowerSaving(1e3, "rel.", reduction)
+format_label(m::PowerSaving) =
+    "$(Base.typename(typeof(m.reduction)).name) $(Base.typename(typeof(m)).name) ($(m.unit))"
 struct EnergySaving <: AbstractMetric
     scale::Float64
     unit::String
@@ -52,7 +54,8 @@ function bin_frequencies(freqs, values)
     bins, clusters
 end
 
-get_series_for(m::AbstractMetric, partition) = get_series_for(m, cpu_frequency.(partition), partition)
+get_series_for(m::AbstractMetric, partition) =
+    get_series_for(m, cpu_frequency.(partition), partition)
 
 function aggregate_stat(f, samples)
     all = reduce(hcat, samples)
@@ -68,43 +71,43 @@ function get_series_for(m::Power, freqs, partition)
 
     bins, perf_values = bin_frequencies(freqs, perf_power)
     _, bmc_values = bin_frequencies(freqs, bmc_power)
-    (;frequencies = bins, perf = perf_values, bmc = bmc_values)
+    (; frequencies = bins, perf = perf_values, bmc = bmc_values)
 end
 
 function get_series_for(::Runtime, freqs, partition)
     times = totaltime.(partition)
     bins, time_values = bin_frequencies(freqs, times)
-    (;frequencies = bins, time = time_values)
+    (; frequencies = bins, time = time_values)
 end
 
 function get_series_for(m::PowerSaving, freqs, partition)
     f(row) = inv.(row ./ maximum(row))
-    series = get_series_for(Power(m.scale, m.unit, m.reduction), freqs, partition)  
+    series = get_series_for(Power(m.scale, m.unit, m.reduction), freqs, partition)
     perf = aggregate_stat(f, series.perf)
     bmc = aggregate_stat(f, series.bmc)
-    (;frequencies = series.frequencies, perf = perf, bmc = bmc)
+    (; frequencies = series.frequencies, perf = perf, bmc = bmc)
 end
 
 function get_series_for(m::EnergySaving, freqs, partition)
     f(row) = inv.(row ./ maximum(row))
-    series = get_series_for(Energy(m.scale, m.unit), freqs, partition)  
+    series = get_series_for(Energy(m.scale, m.unit), freqs, partition)
     perf = aggregate_stat(f, series.perf)
     bmc = aggregate_stat(f, series.bmc)
-    (;frequencies = series.frequencies, perf = perf, bmc = bmc)
+    (; frequencies = series.frequencies, perf = perf, bmc = bmc)
 end
 
 function get_series_for(::Speedup, freqs, partition)
     times = get_series_for(Runtime(), freqs, partition)
     f(row) = inv.(row ./ maximum(row))
     speedup = aggregate_stat(f, times.time)
-    (;frequencies = times.frequencies, time = speedup)
+    (; frequencies = times.frequencies, time = speedup)
 end
 
 function get_series_for(::Slowdown, freqs, partition)
     times = get_series_for(Runtime(), freqs, partition)
     f(row) = (row ./ minimum(row))
     speedup = aggregate_stat(f, times.time)
-    (;frequencies = times.frequencies, time = speedup)
+    (; frequencies = times.frequencies, time = speedup)
 end
 
 function get_series_for(m::Energy, freqs, partition)
@@ -113,12 +116,29 @@ function get_series_for(m::Energy, freqs, partition)
 
     bins, perf_values = bin_frequencies(freqs, perf_e)
     _, bmc_values = bin_frequencies(freqs, bmc_e)
-    (;frequencies = bins, perf = perf_values, bmc = bmc_values)
+    (; frequencies = bins, perf = perf_values, bmc = bmc_values)
 end
 
 
 abstract type AbstractMeasurement end
-struct Perf <: AbstractMeasurement
+struct Perf <: AbstractMeasurement end
+struct BMC <: AbstractMeasurement end
+
+struct TargetMetric{M,F}
+    metric::M
+    target_function::F
 end
-struct BMC <: AbstractMeasurement
+
+format_label(m::TargetMetric) = format_label(m.metric)
+
+for OP in (:<, :>, :<=, :>=)
+    q = quote
+        function Base.$(OP)(bi::AbstractMetric, value)
+            TargetMetric(bi, i -> $(OP)(i, value))
+        end
+    end
+    eval(q)
 end
+
+export Perf,
+    BMC, Power, Energy, PowerSaving, EnergySaving, Speedup, Slowdown, median, mean, Runtime

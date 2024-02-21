@@ -10,7 +10,8 @@ struct RunInfo
 end
 
 Base.show(io::IO, ::MIME"text/plain", r::RunInfo) = Base.show(io, r)
-Base.show(io::IO, r::RunInfo) = print(io, "RunInfo{$(r.partition)@$(format_frequency(r.cpu_frequency))}")
+Base.show(io::IO, r::RunInfo) =
+    print(io, "RunInfo{$(r.partition)@$(format_frequency(r.cpu_frequency))}")
 
 function RunInfo(testcase::AbstractDict)
     RunInfo(
@@ -50,7 +51,7 @@ totaltime(r::RunInfo) = get_metric("Total time", r)
 coretime(r::RunInfo) = get_metric("Core time", r)
 cpu_frequency(r::RunInfo) = r.cpu_frequency
 bmc_energy(r::RunInfo) = get_metric("BMC", r)
-function bmc_timeseries(r::RunInfo) 
+function bmc_timeseries(r::RunInfo)
     get_timeseries("BMC", r)[2]
 end
 
@@ -60,13 +61,13 @@ function perf_timeseries(r::RunInfo)
     pkgs = get_all_timeseries("energy-pkg", r)
     rams = get_all_timeseries("energy-ram", r)
     pkg_mat = reduce(hcat, [i[2] for i in pkgs])
-    ram_mat = try 
+    ram_mat = try
         reduce(hcat, [i[2] for i in rams])
     catch
         zeros(eltype(pkg_mat), size(pkg_mat))
     end
     dt = diff(pkgs[1][1])
-    readings = sum(pkg_mat, dims=2) .+ sum(ram_mat, dims=2)
+    readings = sum(pkg_mat, dims = 2) .+ sum(ram_mat, dims = 2)
     (pkgs[1][1][2:end-2], readings[2:end-2] ./ dt[2:end-1])
 end
 
@@ -76,10 +77,9 @@ function perf_energy(r::RunInfo)
     (sum(pkgs) + sum(rams))
 end
 
-frequency_domain(rs::Vector{RunInfo}) = 
-    sort(collect(Set(i.cpu_frequency for i in rs)))
+frequency_domain(rs::Vector{RunInfo}) = sort(collect(Set(i.cpu_frequency for i in rs)))
 
-function get_frequency(rs::Vector{RunInfo}, f) 
+function get_frequency(rs::Vector{RunInfo}, f)
     selection = filter(i -> i.cpu_frequency ≈ f, rs)
     if length(selection) == 0
         return nothing
@@ -91,7 +91,7 @@ function filter_clusters(rs::Vector{RunInfo})
     sapphires = filter_nodes(rs, "sapphire")
     icelakes = filter_nodes(rs, "icelake")
     cclakes = filter_nodes(rs, "cclake")
-    
+
     [sapphires, icelakes, cclakes]
 end
 
@@ -104,4 +104,4 @@ is_benchmark(r::RunInfo, name) = contains(lowercase(r.name), name)
 filter_nodes(rs::Vector{RunInfo}, partition) = filter(i -> i.partition == partition, rs)
 
 
-export RunInfo
+export RunInfo, filter_clusters
