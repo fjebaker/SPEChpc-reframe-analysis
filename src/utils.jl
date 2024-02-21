@@ -1,14 +1,14 @@
-function _reduce_timeseries(r::RunInfo, ::BMC)
+function _reduce_timeseries(r::AbstractRunInfo, ::BMC)
     data = get_all_timeseries("BMC", r) |> only
     (; time = data[1], data = data[2])
 end
 
-function _reduce_timeseries(r::RunInfo, ::Perf)
+function _reduce_timeseries(r::AbstractRunInfo, ::Perf)
     time, data = perf_timeseries(r)
     (; time = time, data = data)
 end
 
-function drop_first_seconds(ri::RunInfo, s)
+function drop_first_seconds(ri::AbstractRunInfo, s)
     # adjust time series for each one
     for (k, v) in ri.time_series
         time, data = v
@@ -33,8 +33,8 @@ end
 
 function drop_first_seconds(bi::BenchmarkInfo, s)
     trimmed = map(fieldnames(typeof(bi))) do field_name
-        runinfos = getfield(bi, field_name)
-        map(i -> drop_first_seconds(i, s), runinfos)
+        run_infos = getfield(bi, field_name)
+        map(i -> drop_first_seconds(i, s), run_infos)
     end
     BenchmarkInfo(trimmed...)
 end

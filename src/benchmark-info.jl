@@ -1,11 +1,11 @@
-struct BenchmarkInfo
-    clvleaf::Vector{RunInfo}
-    hpgmgfv::Vector{RunInfo}
-    lbm::Vector{RunInfo}
-    pot3d::Vector{RunInfo}
-    soma::Vector{RunInfo}
-    tealeaf::Vector{RunInfo}
-    weather::Vector{RunInfo}
+struct BenchmarkInfo{T}
+    clvleaf::Vector{T}
+    hpgmgfv::Vector{T}
+    lbm::Vector{T}
+    pot3d::Vector{T}
+    soma::Vector{T}
+    tealeaf::Vector{T}
+    weather::Vector{T}
 end
 
 Base.length(::BenchmarkInfo) = 1
@@ -31,12 +31,12 @@ function Base.:∪(b1::BenchmarkInfo, b2::BenchmarkInfo)
     join_benchmark_info(b1, b2)
 end
 
-function parse_data_json(data)
+function parse_data_json(data; as::Type = FrequencyRunInfo)
     all_runs = data["runs"][1]["testcases"]
 
     # get all the actual runs, and those not skipped or failed
     runs = filter(i -> !is_build_step(i) && is_success(i), all_runs)
-    infos = sort(map(RunInfo, runs), by = i -> i.node_name)
+    infos = sort(map(as, runs), by = i -> i.node_name)
 
     clvleaf_t = filter(i -> is_benchmark(i, "clvleaf_t"), infos)
     hpgmgfv_t = filter(i -> is_benchmark(i, "hpgmgfv_t"), infos)

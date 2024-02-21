@@ -4,51 +4,46 @@ function scaling_plot(when::AbstractMetric, what::AbstractMetric, partition)
     benchmark_name = benchmarkname(partition[1])
 
     color = Makie.wong_colors()
-    freqs = cpu_frequency.(partition)
-    series = get_series_for(what, freqs, partition)
-    time = get_series_for(when, freqs, partition).time
+    ivs = get_iv.(partition)
+    series = get_series_for(what, ivs, partition)
+    time = get_series_for(when, ivs, partition).time
 
     time_label = format_label(when)
     reading_label = format_label(what)
 
     fig = Figure(size = (800, 400))
-    ax = Axis(fig[2, 1], xlabel = "CPU Frequency (MHz)", ylabel = time_label)
+
+    xlabel = get_iv_name(first(partition))
+    ax = Axis(fig[2, 1], xlabel = xlabel, ylabel = time_label)
     ax2 = Axis(fig[2, 1], ylabel = reading_label, yaxisposition = :right)
     ax3 = Axis(fig[2, 2], xlabel = time_label, ylabel = reading_label)
 
     scatter!(
         ax,
-        series.frequencies,
+        series.bins,
         mean.(time),
         color = color[1],
         marker = :x,
         label = "Core time",
     )
-    errorbars!(
-        ax,
-        series.frequencies,
-        mean.(time),
-        std.(time),
-        whiskerwidth = 8,
-        color = color[1],
-    )
+    errorbars!(ax, series.bins, mean.(time), std.(time), whiskerwidth = 8, color = color[1])
 
     axislegend(ax)
 
-    scatterlines!(ax2, series.frequencies, mean.(series.perf), color = color[2])
+    scatterlines!(ax2, series.bins, mean.(series.perf), color = color[2])
     errorbars!(
         ax2,
-        series.frequencies,
+        series.bins,
         mean.(series.perf),
         std.(series.perf),
         whiskerwidth = 8,
         color = color[2],
     )
 
-    scatterlines!(ax2, series.frequencies, mean.(series.bmc), color = color[3])
+    scatterlines!(ax2, series.bins, mean.(series.bmc), color = color[3])
     errorbars!(
         ax2,
-        series.frequencies,
+        series.bins,
         mean.(series.bmc),
         std.(series.bmc),
         whiskerwidth = 8,
@@ -183,20 +178,129 @@ function scaling_plot(
     fig
 end
 
-function _plot_scaling!(ax, when::AbstractMetric, what::AbstractMetric, partition, c1, c2)
-    freqs = cpu_frequency.(partition)
-    series = get_series_for(what, freqs, partition)
-    time = get_series_for(when, freqs, partition).time
+function scaling_plot(
+    when::AbstractMetric,
+    what::AbstractMetric,
+    bi::BenchmarkInfo,
+    ;
+    perf = true,
+    bmc = true,
+)
+    time_label = format_label(when)
+    reading_label = format_label(what)
 
-    @show unique(freqs)
+    fig = Figure()
+    ax = Axis(fig[1, 1], xlabel = time_label, ylabel = reading_label)
 
-    # ep = scatterlines!(ax, mean.(time), mean.(series.perf), color = c1)
-    # errorbars!(ax, mean.(time), mean.(series.perf), std.(series.perf), color = c1)
-    # errorbars!(ax, mean.(time), mean.(series.perf), std.(time), direction = :x, color = c1)
+    color = Makie.wong_colors()
+    itt = Iterators.Stateful(Iterators.cycle(color))
 
-    cp = scatterlines!(ax, mean.(time), mean.(series.bmc), color = c2, linestyle = :dash)
-    errorbars!(ax, mean.(time), mean.(series.bmc), std.(series.bmc), color = c2)
-    errorbars!(ax, mean.(time), mean.(series.bmc), std.(time), direction = :x, color = c2)
+    sapphire_color = popfirst!(itt)
+    icelake_color = popfirst!(itt)
+    cclake_color = popfirst!(itt)
+
+    no_color = Makie.RGBA(0, 0, 0, 0)
+
+    for (name, b) in each_benchmark(bi)
+        # seems to be missing
+        if name == :hpgmgfv
+            continue
+        end
+        sapphire, icelake, cclake = filter_clusters(b)
+        _plot_scaling!(
+            ax,
+            when,
+            what,
+            sapphire,
+            sapphire_color,
+            sapphire_color;
+            perf = perf,
+            bmc = bmc,
+        )
+        _plot_scaling!(
+            ax,
+            when,
+            what,
+            icelake,
+            icelake_color,
+            icelake_color;
+            perf = perf,
+            bmc = bmc,
+        )
+        _plot_scaling!(
+            ax,
+            when,
+            what,
+            cclake,
+            cclake_color,
+            cclake_color;
+            perf = perf,
+            bmc = bmc,
+        )
+    end
+
+    sapphire_elem = [
+        LineElement(color = sapphire_color),
+        MarkerElement(color = sapphire_color, marker = '●'),
+    ]
+    icelake_elem = [
+        LineElement(color = icelake_color),
+        MarkerElement(color = icelake_color, marker = '●'),
+    ]
+    cclake_elem = [
+        LineElement(color = cclake_color),
+        MarkerElement(color = cclake_color, marker = '●'),
+    ]
+
+    Legend(
+        fig[1, 2],
+        [sapphire_elem, icelake_elem, cclake_elem],
+        ["sapphire", "icelake", "cclake"],
+    )
+
+    fig
+end
+
+function _plot_scaling!(
+    ax,
+    when::AbstractMetric,
+    what::AbstractMetric,
+    partition,
+    c1,
+    c2;
+    perf = true,
+    bmc = true,
+)
+    ivs = get_iv.(partition)
+    series = get_series_for(what, ivs, partition)
+    time = get_series_for(when, ivs, partition).time
+
+    if perf
+        ep = scatterlines!(ax, mean.(time), mean.(series.perf), color = c1)
+        errorbars!(ax, mean.(time), mean.(series.perf), std.(series.perf), color = c1)
+        errorbars!(
+            ax,
+            mean.(time),
+            mean.(series.perf),
+            std.(time),
+            direction = :x,
+            color = c1,
+        )
+    end
+
+    if bmc
+        cp =
+            scatterlines!(ax, mean.(time), mean.(series.bmc), color = c2, linestyle = :dash)
+        errorbars!(ax, mean.(time), mean.(series.bmc), std.(series.bmc), color = c2)
+        errorbars!(
+            ax,
+            mean.(time),
+            mean.(series.bmc),
+            std.(time),
+            direction = :x,
+            color = c2,
+        )
+    end
 end
 
 export timeseries_plot, scaling_plot
