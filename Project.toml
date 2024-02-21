@@ -4,7 +4,6 @@ authors = ["fjebaker <fergusbkr@gmail.com>"]
 version = "0.1.0"
 
 [deps]
-Buckets = "3235f445-51d8-4100-901d-5b23398ac3ab"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
