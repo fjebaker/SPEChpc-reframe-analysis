@@ -1,4 +1,5 @@
-struct BenchmarkInfo{T}
+
+struct BenchmarkInfo{T <: AbstractRunInfo}
     clvleaf::Vector{T}
     hpgmgfv::Vector{T}
     lbm::Vector{T}
@@ -8,12 +9,37 @@ struct BenchmarkInfo{T}
     weather::Vector{T}
 end
 
-Base.length(::BenchmarkInfo) = 1
-Base.iterate(m::BenchmarkInfo) = (m, nothing)
-Base.iterate(::BenchmarkInfo, ::Nothing) = nothing
+function split_partitions(bi::BenchmarkInfo)
+    splits = map(each_benchmark(bi)) do x
+        _, runs = x
+        split_partitions(runs)
+    end
+    args = map(each_species()) do index
+        runs = map(splits) do s
+            getfield(s, index)
+        end
+        BenchmarkInfo(runs...)
+    end
+    PartitionSplit(args...)
+end
 
-each_benchmark(bi::BenchmarkInfo) =
-    ((f, getfield(bi, f)) for f in fieldnames(BenchmarkInfo))
+function num_benchmarks(bi::BenchmarkInfo)
+    sum(i -> length(i[2]), each_benchmark(bi))
+end
+
+# permit broadcasting
+Base.broadcastable(b::BenchmarkInfo) = Ref(b)
+
+function benchmark_symbols(::T) where {T<:BenchmarkInfo}
+    (fieldnames(T)...,)
+end
+
+function each_benchmark(bi::BenchmarkInfo{T}) where {T}
+    N::Int = length(fieldnames(BenchmarkInfo{T}))
+    generator = ((f, getfield(bi, f)) for f in fieldnames(BenchmarkInfo{T}))
+    res::NTuple{N,Tuple{Symbol,Vector{T}}} = (generator...,)
+    res
+end
 
 function join_benchmark_info(b1::BenchmarkInfo, b2::BenchmarkInfo)
     BenchmarkInfo(
@@ -31,7 +57,8 @@ function Base.:∪(b1::BenchmarkInfo, b2::BenchmarkInfo)
     join_benchmark_info(b1, b2)
 end
 
-function parse_data_json(data; as::Type = FrequencyRunInfo)
+function parse_data_json(path::AbstractString; as::Type = FrequencyRunInfo)
+    data = JSON.parsefile(path)
     all_runs = data["runs"][1]["testcases"]
 
     # get all the actual runs, and those not skipped or failed
@@ -49,5 +76,4 @@ function parse_data_json(data; as::Type = FrequencyRunInfo)
     BenchmarkInfo(clvleaf_t, hpgmgfv_t, lbm_t, pot3d_t, soma_t, tealeaf_t, weather_t)
 end
 
-
-export parse_data_json, BenchmarkInfo
+export parse_data_json, BenchmarkInfo, split_partitions
