@@ -1,7 +1,7 @@
 
-struct BenchmarkInfo{T <: AbstractRunInfo}
+struct BenchmarkInfo{T<:AbstractRunInfo}
     clvleaf::Vector{T}
-    hpgmgfv::Vector{T}
+    # hpgmgfv::Vector{T}
     lbm::Vector{T}
     pot3d::Vector{T}
     soma::Vector{T}
@@ -41,10 +41,12 @@ function each_benchmark(bi::BenchmarkInfo{T}) where {T}
     res
 end
 
+get_iv_name(bi::BenchmarkInfo{T}) where {T} = get_iv_name(T)
+
 function join_benchmark_info(b1::BenchmarkInfo, b2::BenchmarkInfo)
     BenchmarkInfo(
         vcat(b1.clvleaf, b2.clvleaf),
-        vcat(b1.hpgmgfv, b2.hpgmgfv),
+        # vcat(b1.hpgmgfv, b2.hpgmgfv),
         vcat(b1.lbm, b2.lbm),
         vcat(b1.pot3d, b2.pot3d),
         vcat(b1.soma, b2.soma),
@@ -66,14 +68,22 @@ function parse_data_json(path::AbstractString; as::Type = FrequencyRunInfo)
     infos = sort(map(as, runs), by = i -> i.node_name)
 
     clvleaf_t = filter(i -> is_benchmark(i, "clvleaf_t"), infos)
-    hpgmgfv_t = filter(i -> is_benchmark(i, "hpgmgfv_t"), infos)
+    # hpgmgfv_t = filter(i -> is_benchmark(i, "hpgmgfv_t"), infos)
     lbm_t = filter(i -> is_benchmark(i, "lbm_t"), infos)
     pot3d_t = filter(i -> is_benchmark(i, "pot3d_t"), infos)
     soma_t = filter(i -> is_benchmark(i, "soma_t"), infos)
     tealeaf_t = filter(i -> is_benchmark(i, "tealeaf_t"), infos)
     weather_t = filter(i -> is_benchmark(i, "weather_t"), infos)
 
-    BenchmarkInfo(clvleaf_t, hpgmgfv_t, lbm_t, pot3d_t, soma_t, tealeaf_t, weather_t)
+    BenchmarkInfo(
+        clvleaf_t,
+        # hpgmgfv_t,
+        lbm_t,
+        pot3d_t,
+        soma_t,
+        tealeaf_t,
+        weather_t,
+    )
 end
 
 export parse_data_json, BenchmarkInfo, split_partitions

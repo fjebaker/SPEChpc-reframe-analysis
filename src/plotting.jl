@@ -1,21 +1,65 @@
-_reduce(::AbstractMetric, v::Vector{<:Number}) = v
-function _reduce(::AbstractMetric, v::Vector{<:Vector{<:Number}})
+MARKER_LOOKUP = Dict(
+    :weather => :cross,
+    :clvleaf => :xcross,
+    :tealeaf => :rect,
+    :lbm => :circle,
+    :soma => :diamond,
+    :pot3d => :utriangle,
+)
+
+function _marker_from_name(name)
+    get(MARKER_LOOKUP, name, :star5)
+end
+
+_reduce(::AbstractMetric, v::Vector{<:Number}; kwargs...) = v
+function _reduce(
+    ::AbstractMetric,
+    v::Vector{<:Vector{<:Number}};
+    reduction::F = mean,
+) where {F}
     map(v) do x
-        mean(x)
+        reduction(x)
     end
 end
-function _reduce(::AbstractMetric, v::Vector{<:Vector{<:Vector{<:Number}}})
+function _reduce(
+    ::AbstractMetric,
+    v::Vector{<:Vector{<:Vector{<:Number}}};
+    reduction::F = mean,
+) where {F}
     map(v) do x
         shortest = minimum(length, x)
         mat = reduce(hcat, i[1:shortest] for i in x)
-        mean(mat, dims = 2)
+        vec(k -> reduction(k), eachcol(mat))
     end
 end
 
 
-function scaling_plot!(ax, bv::BinnedValues; kwargs...)
-    vs = _reduce(bv.metric, bv.values)
-    scatter!(ax, bv.bins, vs; kwargs...)
+function scaling_plot!(ax, bv::BinnedValues{M,T,V}; kwargs...) where {M,T,V}
+    vs::V = _reduce(bv.metric, bv.values)
+    errs::V =
+        replace!(_reduce(bv.metric, bv.values; reduction = Statistics.std), NaN => 0.0)
+    @show bv.values
+    errorbars!(ax, bv.bins, vs, errs; whiskerwidth = 8, kwargs...)
+    scatterlines!(ax, bv.bins, vs; kwargs...)
+end
+
+function scaling_plot!(
+    ax,
+    bvx::BinnedValues{M1,T,V},
+    bvy::BinnedValues{M2,T,V};
+    kwargs...,
+) where {M1,M2,T,V}
+    xvs::V = _reduce(bvx.metric, bvx.values)
+    xerrs::V =
+        replace!(_reduce(bvx.metric, bvx.values; reduction = Statistics.std), NaN => 0.0)
+
+    yvs::V = _reduce(bvy.metric, bvy.values)
+    yerrs::V =
+        replace!(_reduce(bvy.metric, bvy.values; reduction = Statistics.std), NaN => 0.0)
+
+    errorbars!(ax, xvs, yvs, yerrs; whiskerwidth = 8, kwargs...)
+    errorbars!(ax, xvs, yvs, xerrs; direction=:x, whiskerwidth = 8, kwargs...)
+    scatterlines!(ax, xvs, yvs; kwargs...)
 end
 
 function scaling_plot!(ax, sv::SeriesValues; kwargs...)
@@ -24,11 +68,56 @@ function scaling_plot!(ax, sv::SeriesValues; kwargs...)
     end
 end
 
-function scaling_plot(args...; kwargs...)
+function scaling_plot(sv::SeriesValues; kwargs...)
     fig = Figure()
-    ax = Axis(fig[1, 1])
-    scaling_plot!(ax, args...; kwargs...)
-    fig
+    ax = Axis(
+        fig[1, 1];
+        kwargs...,
+    )
+    for (time, vals) in zip(sv.times, sv.values)
+        lines!(ax, time, vals; kwargs...)
+    end
+    fig, ax
+end
+
+function scaling_plot(yaxis::AbstractMetric, partitions::BenchmarkInfo; kwargs...)
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1];
+        xlabel = get_iv_name(partitions),
+        ylabel = format_label(yaxis),
+        kwargs...,
+    )
+    plots = map(each_benchmark(partitions)) do ((s, bmark))
+        marker = _marker_from_name(s)
+        bv = get_metric(yaxis, bmark)
+        scaling_plot!(ax, bv; marker = marker, markersize = 12, linewidth = 1.0)
+    end
+    Legend(fig[1, 2], [plots...], ["$(i)" for i in benchmark_symbols(partitions)])
+    fig, ax
+end
+
+function scaling_plot(
+    xaxis::AbstractMetric,
+    yaxis::AbstractMetric,
+    partitions::BenchmarkInfo;
+    kwargs...,
+)
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1];
+        xlabel = format_label(xaxis),
+        ylabel = format_label(yaxis),
+        kwargs...,
+    )
+    plots = map(each_benchmark(partitions)) do ((s, bmark))
+        marker = _marker_from_name(s)
+        xbv = get_metric(xaxis, bmark)
+        ybv = get_metric(yaxis, bmark)
+        scaling_plot!(ax, xbv, ybv; marker = marker, markersize = 12, linewidth = 1.0)
+    end
+    Legend(fig[1, 2], [plots...], ["$(i)" for i in benchmark_symbols(partitions)])
+    fig, ax
 end
 
 export scaling_plot, scaling_plot!
@@ -67,19 +156,6 @@ function _iv_average(when::AbstractMetric, info::BenchmarkInfo)
     icelake = _reduce_iv([i[2] for i in data])
     cclake = _reduce_iv([i[3] for i in data])
     (sapphire, icelake, cclake)
-end
-
-MARKER_LOOKUP = Dict(
-    :weather => :cross,
-    :clvleaf => :xcross,
-    :tealeaf => :rect,
-    :lbm => :circle,
-    :soma => :diamond,
-    :pot3d => :utriangle,
-)
-
-function _marker_from_name(name)
-    get(MARKER_LOOKUP, name, :star5)
 end
 
 function _iv_plot!(
@@ -364,7 +440,7 @@ function _symbol_to_index(partition)
     end
 end
 
-function scaling_plot(
+function __scaling_plot(
     when::AbstractMetric,
     what::AbstractMetric,
     bi::BenchmarkInfo,
@@ -399,7 +475,7 @@ function scaling_plot(
     fig
 end
 
-function scaling_plot(
+function __scaling_plot(
     when::TargetMetric,
     what::AbstractMetric,
     bi::BenchmarkInfo,
@@ -441,7 +517,7 @@ function scaling_plot(
     fig
 end
 
-function scaling_plot(
+function __scaling_plot(
     _when::Union{<:TargetMetric,<:AbstractMetric},
     what::AbstractMetric,
     bi::BenchmarkInfo,

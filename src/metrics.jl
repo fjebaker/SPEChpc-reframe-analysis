@@ -5,6 +5,8 @@ get_timeseries(::AbstractMeasurement, ::AbstractRunInfo) = error("Not implemente
 
 struct Perf <: AbstractMeasurement end
 struct BMC <: AbstractMeasurement end
+struct CoreTime <: AbstractMeasurement end
+struct RunTime <: AbstractMeasurement end
 
 function get_metric(::Perf, info::AbstractRunInfo)
     # sum all sockets, all nodes, all pkg and ram
@@ -48,14 +50,13 @@ reduction_f(::AbstractMetric) = mean
 # get_series_for(m::AbstractMetric, partition) =
 #     get_series_for(m, get_iv.(partition), partition)
 
-struct BinnedValues{M <: AbstractMetric,T,V}
+struct BinnedValues{M<:AbstractMetric,T,V}
     metric::M
     bins::Vector{T}
     values::Vector{V}
 end
 
-Base.show(io::IO, ::MIME"text/plain", r::BinnedValues) =
-    print(io, r)
+Base.show(io::IO, ::MIME"text/plain", r::BinnedValues) = print(io, r)
 function Base.show(io::IO, r::BinnedValues{M}) where {M}
     print(io, "BinnedValues{$(M),n=$(length(r.bins))}")
 end
@@ -67,15 +68,14 @@ function get_metric(m::AbstractMetric, infos::Vector{<:AbstractRunInfo})
     BinnedValues(m, bins, weights)
 end
 
-struct SeriesValues{M <: AbstractMetric,T,B}
+struct SeriesValues{M<:AbstractMetric,T,B}
     metric::M
     times::Vector{T}
     values::Vector{T}
     bins::Vector{B}
 end
 
-Base.show(io::IO, ::MIME"text/plain", r::SeriesValues) =
-    print(io, r)
+Base.show(io::IO, ::MIME"text/plain", r::SeriesValues) = print(io, r)
 function Base.show(io::IO, r::SeriesValues{M}) where {M}
     print(io, "SeriesValues{$(M),n=$(length(r.times))}")
 end
@@ -133,11 +133,30 @@ function time_series(m::Energy, info::AbstractRunInfo)
 end
 
 function get_metric(m::Energy, info::AbstractRunInfo)
-    if m.measurement isa BMC
+    es = if m.measurement isa BMC
         time, power = get_timeseries(BMC(), info)
         integrate(time, power)
     else
         get_metric(m.measurement, info)
+    end
+    es ./ m.scale
+end
+
+###############################################################################
+
+struct Time{M<:AbstractMeasurement} <: AbstractMetric
+    scale::Float64
+    unit::String
+    what::M
+end
+
+Time() = Time(1.0, "s", RunTime())
+
+function get_metric(m::Time, info::AbstractRunInfo)
+    if m.what isa RunTime
+        totaltime(info)
+    else
+        coretime(info)
     end
 end
 
@@ -152,16 +171,13 @@ PowerSaving(; kwargs...) = PowerSaving(Power(; kwargs...))
 format_label(m::PowerSaving) =
     "$(Base.typename(typeof(m.power.reduction)).name) Power Saving (rel)"
 
-function get_series_for(m::PowerSaving, ivs, partition)
-    f(row) = inv.(row ./ maximum(row))
-    series = get_series_for(Power(m.scale, m.unit, m.reduction), ivs, partition)
-    perf = aggregate_stat(f, series.perf)
-    bmc = aggregate_stat(f, series.bmc)
-    (; bins = series.bins, perf = perf, bmc = bmc)
+function get_metric(m::PowerSaving, infos::Vector{<:AbstractRunInfo})
+    ivs = get_iv.(infos)
+    values = get_metric.(m.power, infos)
+    min_v = length(values) > 0 ? minimum(values) : values
+    bins, weights = bin_independent_variable(ivs, values ./ min_v)
+    BinnedValues(m, bins, weights)
 end
-
-
-###############################################################################
 
 struct EnergySaving{E} <: AbstractMetric
     energy::E
@@ -171,28 +187,30 @@ EnergySaving(; kwargs...) = EnergySaving(Energy(; kwargs...))
 
 format_label(m::EnergySaving) = "Energy Saving (rel)"
 
-function get_series_for(m::EnergySaving, ivs, partition)
-    f(row) = inv.(row ./ maximum(row))
-    series = get_series_for(Energy(m.scale, m.unit), ivs, partition)
-    perf = aggregate_stat(f, series.perf)
-    bmc = aggregate_stat(f, series.bmc)
-    (; bins = series.bins, perf = perf, bmc = bmc)
+function get_metric(m::EnergySaving, infos::Vector{<:AbstractRunInfo})
+    ivs = get_iv.(infos)
+    values = get_metric.(m.energy, infos)
+    min_v = length(values) > 0 ? minimum(values) : values
+    bins, weights = bin_independent_variable(ivs, values ./ min_v)
+    BinnedValues(m, bins, weights)
 end
 
 ###############################################################################
 
-struct Slowdown <: AbstractMetric
-    scale::Float64
-    unit::String
+struct Slowdown{T<:Time} <: AbstractMetric
+    time::T
 end
 
-Slowdown() = Slowdown(1.0, "rel.")
+Slowdown() = Slowdown(Time())
 
-function get_series_for(::Slowdown, ivs, partition)
-    times = get_series_for(Runtime(), ivs, partition)
-    f(row) = (row ./ minimum(row))
-    speedup = aggregate_stat(f, times.time)
-    (; bins = times.bins, time = speedup)
+format_label(m::Slowdown) = "$(Base.typename(typeof(m)).name) (rel. to fastest)"
+
+function get_metric(m::Slowdown, infos::Vector{<:AbstractRunInfo})
+    ivs = get_iv.(infos)
+    values = get_metric.(m.time, infos)
+    min_v = length(values) > 0 ? minimum(values) : values
+    bins, weights = bin_independent_variable(ivs, values ./ min_v)
+    BinnedValues(m, bins, weights)
 end
 
 ###############################################################################
@@ -212,27 +230,10 @@ function get_series_for(::Speedup, ivs, partition)
     (; bins = times.bins, time = speedup)
 end
 
-
-###############################################################################
-
-struct Runtime <: AbstractMetric
-    scale::Float64
-    unit::String
-end
-
-Runtime() = Runtime(1.0, "s")
-
-function get_series_for(::Runtime, ivs, partition)
-    times = totaltime.(partition)
-    bins, time_values = bin_independent_variable(ivs, times)
-    (; bins = bins, time = time_values)
-end
-
 ###############################################################################
 
 function bin_independent_variable(ivs, values::Vector{T}) where {T}
     bins = sort(unique(ivs))
-@show T
     clusters::Vector{Vector{T}} = [T[] for _ in bins]
 
     for (f, v) in zip(ivs, values)
@@ -305,5 +306,7 @@ export Perf,
     find_optimal,
     filter_matching,
     time_series,
-    get_metric
-
+    get_metric,
+    Time,
+    RunTime,
+    CoreTime
