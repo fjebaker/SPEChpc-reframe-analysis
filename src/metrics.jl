@@ -101,7 +101,7 @@ end
 Power(; reduction = maximum, measurement = BMC()) = Power(1e3, "kW", reduction, measurement)
 
 format_label(m::Power) =
-    "$(Base.typename(typeof(m.reduction)).name) $(Base.typename(typeof(m)).name) ($(m.unit))"
+    "$(Base.typename(typeof(m.reduction)).name) $(Base.typename(typeof(m)).name) ($(m.unit), $(Base.typename(typeof(m.measurement)).name))"
 
 reduction_f(m::Power) = m.reduction
 
