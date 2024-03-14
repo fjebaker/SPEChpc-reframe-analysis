@@ -12,10 +12,11 @@ DATE_FORMAT = DateFormat("y-m-dTH:M:S")
 
 format_frequency(freq) = Printf.@sprintf "%.0f MHz" freq
 
-include("metrics.jl")
 include("run-info.jl")
+include("metrics.jl")
 include("benchmark-info.jl")
 include("utils.jl")
+include("queries.jl")
 include("plotting.jl")
 include("optimization.jl")
 
