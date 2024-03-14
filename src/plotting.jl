@@ -38,7 +38,6 @@ function scaling_plot!(ax, bv::BinnedValues{M,T,V}; kwargs...) where {M,T,V}
     vs::V = _reduce(bv.metric, bv.values)
     errs::V =
         replace!(_reduce(bv.metric, bv.values; reduction = Statistics.std), NaN => 0.0)
-    @show bv.values
     errorbars!(ax, bv.bins, vs, errs; whiskerwidth = 8, kwargs...)
     scatterlines!(ax, bv.bins, vs; kwargs...)
 end
@@ -88,12 +87,21 @@ function scaling_plot(yaxis::AbstractMetric, partitions::BenchmarkInfo; kwargs..
         ylabel = format_label(yaxis),
         kwargs...,
     )
-    plots = map(each_benchmark(partitions)) do ((s, bmark))
+    plots = []
+    names = []
+
+    for (s, bmark) in each_benchmark(partitions)
         marker = _marker_from_name(s)
         bv = get_metric(yaxis, bmark)
-        scaling_plot!(ax, bv; marker = marker, markersize = 12, linewidth = 1.0)
+        if length(bv.bins) > 0
+            p = scaling_plot!(ax, bv; marker = marker, markersize = 12, linewidth = 1.0)
+            push!(plots, p)
+            push!(names, "$s")
+        else
+            @warn "No bins for $s"
+        end
     end
-    Legend(fig[1, 2], [plots...], ["$(i)" for i in benchmark_symbols(partitions)])
+    Legend(fig[1, 2], plots, names)
     fig, ax
 end
 
@@ -110,13 +118,22 @@ function scaling_plot(
         ylabel = format_label(yaxis),
         kwargs...,
     )
-    plots = map(each_benchmark(partitions)) do ((s, bmark))
+    plots = []
+    names = []
+
+    for (s, bmark) in each_benchmark(partitions)
         marker = _marker_from_name(s)
         xbv = get_metric(xaxis, bmark)
         ybv = get_metric(yaxis, bmark)
-        scaling_plot!(ax, xbv, ybv; marker = marker, markersize = 12, linewidth = 1.0)
+        if length(xbv.bins) > 0
+            p = scaling_plot!(ax, xbv, ybv; marker = marker, markersize = 12, linewidth = 1.0)
+            push!(plots, p)
+            push!(names, "$s")
+        else
+            @warn "No bins for $s"
+        end
     end
-    Legend(fig[1, 2], [plots...], ["$(i)" for i in benchmark_symbols(partitions)])
+    Legend(fig[1, 2], plots, names)
     fig, ax
 end
 
