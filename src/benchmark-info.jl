@@ -9,6 +9,19 @@ struct BenchmarkInfo{T<:AbstractRunInfo}
     weather::Vector{T}
 end
 
+function Base.show(io::IO, ::MIME"text/plain", r::BenchmarkInfo)
+    println(io, "BenchmarkInfo")
+    for (s, bmark) in each_benchmark(r)
+        if length(bmark) > 0
+            lims =    extrema(get_iv.(bmark))
+            unit = get_iv_name(bmark[1])
+            println(io, "  . $s : $(length(bmark)) [$(lims[1]) - $(lims[2]) $unit]")
+        else
+            println(io, "  . $s : NO DATA")
+        end
+    end
+end
+
 function split_partitions(bi::BenchmarkInfo)
     splits = map(each_benchmark(bi)) do x
         _, runs = x
